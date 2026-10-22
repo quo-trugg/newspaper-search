@@ -1,4 +1,4 @@
-# VnExpress & BaoMoi Whoosh Search Engine
+# Newspaper Search Engine
 
 A fast, text-based news search engine over **VnExpress** and **BaoMoi** datasets (`.json` and `.csv`) using [Whoosh](https://whoosh.readthedocs.io/en/latest/quickstart.html) for full-text indexing and BM25F ranking, and [Streamlit](https://streamlit.io/) for the interactive web user interface.
 
