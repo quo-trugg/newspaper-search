@@ -1,0 +1,18 @@
+# Whoosh index directory
+indexdir/
+
+# Python cache & virtual environment
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Streamlit config / cache
+.streamlit/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
