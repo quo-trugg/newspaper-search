@@ -242,8 +242,13 @@ def search_images(
     ix: index.Index,
     query_str: str,
     limit: int = 20,
+    collapse_by_article: bool = True,
 ) -> list[dict[str, str]]:
-    """Search image subdocuments comparing the query against text content immediately following each image."""
+    """Search image subdocuments comparing the query against text content immediately following each image.
+    
+    If collapse_by_article is True (default), ensures each article appears at most once in results,
+    keeping only the single most relevant image for that article.
+    """
     clean_query = query_str.strip()
     if not clean_query:
         return []
@@ -256,18 +261,29 @@ def search_images(
     parsed_query = parser.parse(clean_query)
 
     results: list[dict[str, str]] = []
+    seen_articles: set[str] = set()
+    fetch_limit = limit * 5 if collapse_by_article else limit
+
     with ix.searcher(weighting=scoring.BM25F()) as searcher:
-        hits = searcher.search(parsed_query, limit=limit)
+        hits = searcher.search(parsed_query, limit=fetch_limit)
         for hit in hits:
+            article_url = hit.get("article_url", "")
+            if collapse_by_article and article_url:
+                if article_url in seen_articles:
+                    continue
+                seen_articles.add(article_url)
+
             results.append(
                 {
                     "doc_id": hit.get("doc_id", ""),
                     "image_url": hit.get("image_url", ""),
-                    "article_url": hit.get("article_url", ""),
+                    "article_url": article_url,
                     "article_title": hit.get("article_title", ""),
                     "associated_text": hit.get("associated_text", ""),
                     "published_date": hit.get("published_date", ""),
                     "score": f"{hit.score:.3f}",
                 }
             )
+            if len(results) >= limit:
+                break
     return results

@@ -181,3 +181,57 @@ def test_search_images_bm25f(tmp_path: Path):
     # Search for empty
     assert search_images(ix, "") == []
     assert search_images(ix, "   ") == []
+
+
+def test_search_images_collapses_multiple_images_per_article(tmp_path: Path):
+    test_index_dir = tmp_path / "img_collapse_idx"
+    test_data_file = tmp_path / "img_collapse_data.json"
+
+    # Same article has 3 different images all matching "công nghệ"
+    subdocs = [
+        {
+            "doc_id": "img_art1_photo1",
+            "image_url": "https://example.com/photo1.jpg",
+            "article_url": "https://example.com/same-article-1",
+            "article_title": "Triển lãm công nghệ",
+            "associated_text": "Robot công nghệ cao hỗ trợ y tế thông minh",
+            "published_date": "2026-10-26",
+        },
+        {
+            "doc_id": "img_art1_photo2",
+            "image_url": "https://example.com/photo2.jpg",
+            "article_url": "https://example.com/same-article-1",
+            "article_title": "Triển lãm công nghệ",
+            "associated_text": "Khu trưng bày công nghệ vi mạch bán dẫn tiên tiến",
+            "published_date": "2026-10-26",
+        },
+        {
+            "doc_id": "img_art1_photo3",
+            "image_url": "https://example.com/photo3.jpg",
+            "article_url": "https://example.com/same-article-1",
+            "article_title": "Triển lãm công nghệ",
+            "associated_text": "Khách tham quan gian hàng công nghệ thực tế ảo",
+            "published_date": "2026-10-26",
+        },
+        {
+            "doc_id": "img_art2_photo1",
+            "image_url": "https://example.com/other_photo.jpg",
+            "article_url": "https://example.com/different-article-2",
+            "article_title": "Hội nghị phần mềm",
+            "associated_text": "Các chuyên gia trao đổi về công nghệ đám mây",
+            "published_date": "2026-10-26",
+        },
+    ]
+    test_data_file.write_text(json.dumps(subdocs, ensure_ascii=False), encoding="utf-8")
+
+    ix = get_or_create_image_index(index_dir=test_index_dir, data_file=test_data_file)
+
+    # When searching for "công nghệ", all 4 images match, but the 3 images from article 1 must collapse into 1
+    hits = search_images(ix, "công nghệ", limit=10, collapse_by_article=True)
+
+    # Must contain exactly 2 hits: 1 for article 1 and 1 for article 2
+    assert len(hits) == 2
+    returned_articles = [h["article_url"] for h in hits]
+    assert len(returned_articles) == len(set(returned_articles))
+    assert "https://example.com/same-article-1" in returned_articles
+    assert "https://example.com/different-article-2" in returned_articles
