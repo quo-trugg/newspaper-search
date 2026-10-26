@@ -16,3 +16,7 @@ ENV/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Crawler runtime status
+data/.crawler_status.json
+

@@ -124,6 +124,33 @@ def get_or_create_index(
     return ix
 
 
+def index_records(ix: index.Index, records: list[dict[str, str]]) -> int:
+    """Index or update a batch of records into the Whoosh index."""
+    if not records:
+        return 0
+    writer = ix.writer()
+    for doc in records:
+        writer.update_document(
+            url=doc["url"],
+            title=doc["title"],
+            first_20_words=doc["first_20_words"],
+            published_date=doc["published_date"],
+        )
+    writer.commit()
+    return len(records)
+
+
+def get_indexed_urls(ix: index.Index) -> set[str]:
+    """Retrieve all document URLs currently stored in the Whoosh index."""
+    urls: set[str] = set()
+    with ix.searcher() as searcher:
+        for fields in searcher.all_stored_fields():
+            val = fields.get("url")
+            if val:
+                urls.add(val)
+    return urls
+
+
 def search_documents(
     ix: index.Index,
     query_str: str,
