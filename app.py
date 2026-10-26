@@ -11,6 +11,10 @@ from crawler import (
     get_crawler_status,
     run_crawler_loop,
 )
+from image_search import (
+    get_or_create_image_index,
+    search_images,
+)
 from indexer import get_or_create_index, search_documents
 
 st.set_page_config(
@@ -20,10 +24,19 @@ st.set_page_config(
 )
 
 
-@st.cache_resource(show_spinner="Initializing search index...")
+@st.cache_resource(show_spinner="Initializing article search index...")
 def load_cached_index():
-    """Load or initialize the Whoosh search index once and cache the reference."""
+    """Load or initialize the Whoosh article search index once and cache the reference."""
     return get_or_create_index(index_dir="indexdir", data_dir="data")
+
+
+@st.cache_resource(show_spinner="Initializing image search index...")
+def load_cached_image_index():
+    """Load or initialize the Whoosh image search index once and cache the reference."""
+    return get_or_create_image_index(
+        index_dir="image_indexdir",
+        data_file="data/images_dataset.json",
+    )
 
 
 class CrawlerWorker:
@@ -72,18 +85,20 @@ def get_crawler_worker() -> CrawlerWorker:
     return CrawlerWorker()
 
 
-def render_sidebar(ix: Any) -> None:
+def render_sidebar(ix: Any, ix_image: Any) -> None:
     """Render sidebar controls and status for the 15-minute Crawling Loop."""
     worker = get_crawler_worker()
     st.sidebar.header("🔄 Crawling Loop")
 
     status_data = get_crawler_status(data_dir="data")
     total_docs = ix.doc_count()
+    total_images = ix_image.doc_count()
 
-    st.sidebar.metric(
-        label="Total Indexed Articles",
-        value=f"{total_docs:,}",
-    )
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric(label="Articles", value=f"{total_docs:,}")
+    with col2:
+        st.metric(label="Images", value=f"{total_images:,}")
 
     with st.sidebar.container(border=True):
         st.markdown("**Crawler Status**")
@@ -107,8 +122,9 @@ def render_sidebar(ix: Any) -> None:
                 data_dir="data",
                 max_per_site=50,
             )
-            # Refresh Whoosh index reader
+            # Refresh Whoosh index readers
             ix.refresh()
+            ix_image.refresh()
             status_box.update(
                 label=f"Done! +{res['total_new']} new posts indexed.",
                 state="complete",
@@ -141,37 +157,83 @@ def render_sidebar(ix: Any) -> None:
 
 def main() -> None:
     st.title("🔍 VnExpress & BaoMoi Search Engine")
-    st.caption("Full-text search powered by Whoosh BM25F ranking and Streamlit")
+    st.caption("Full-text and text-based image search powered by Whoosh BM25F ranking")
 
     ix = load_cached_index()
-    # Always refresh to ensure newly crawled commits are immediately visible
     ix = ix.refresh()
 
-    render_sidebar(ix)
+    ix_image = load_cached_image_index()
+    ix_image = ix_image.refresh()
 
-    query = st.text_input(
-        "Search query:",
-        placeholder="Enter keywords (e.g., AI, technology, economy, sports)...",
+    render_sidebar(ix, ix_image)
+
+    search_mode = st.segmented_control(
+        "Search Mode",
+        options=["Articles", "Images"],
+        default="Articles",
         label_visibility="collapsed",
     )
 
-    if query.strip():
-        start_time = time.perf_counter()
-        results = search_documents(ix, query, limit=20)
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-
-        st.markdown(
-            f"Found **{len(results)}** result(s) in **{elapsed_ms:.1f} ms** ranked by relevance:"
+    if search_mode == "Articles":
+        query = st.text_input(
+            "Search query:",
+            placeholder="Enter keywords (e.g., AI, technology, economy, sports)...",
+            label_visibility="collapsed",
+            key="query_articles",
         )
 
-        for rank, item in enumerate(results, start=1):
-            with st.container(border=True):
-                st.markdown(f"### {rank}. [{item['title']}]({item['url']})")
-                st.markdown(f"**🔗 Link:** [{item['url']}]({item['url']})")
-                st.markdown(f"**📝 First 20 words:** {item['first_20_words']}")
-                st.caption(
-                    f"📅 Published Date: {item['published_date']} | BM25F Score: {item['score']}"
-                )
+        if query.strip():
+            start_time = time.perf_counter()
+            results = search_documents(ix, query, limit=20)
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+            st.markdown(
+                f"Found **{len(results)}** article(s) in **{elapsed_ms:.1f} ms** ranked by relevance:"
+            )
+
+            for rank, item in enumerate(results, start=1):
+                with st.container(border=True):
+                    st.markdown(f"### {rank}. [{item['title']}]({item['url']})")
+                    st.markdown(f"**🔗 Link:** [{item['url']}]({item['url']})")
+                    st.markdown(f"**📝 First 20 words:** {item['first_20_words']}")
+                    st.caption(
+                        f"📅 Published Date: {item['published_date']} | BM25F Score: {item['score']}"
+                    )
+
+    else:
+        # Text-based Image Search
+        query = st.text_input(
+            "Image search query:",
+            placeholder="Enter keywords to search images by following text (e.g., cầu vượt, giao thông, căn hộ)...",
+            label_visibility="collapsed",
+            key="query_images",
+        )
+
+        if query.strip():
+            start_time = time.perf_counter()
+            results = search_images(ix_image, query, limit=20)
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+            st.markdown(
+                f"Found **{len(results)}** image(s) in **{elapsed_ms:.1f} ms** ranked by text relevance:"
+            )
+
+            for rank, item in enumerate(results, start=1):
+                with st.container(border=True):
+                    st.markdown(f"### {rank}. [{item['article_title']}]({item['article_url']})")
+                    try:
+                        st.image(
+                            item["image_url"],
+                            width="stretch",
+                            caption=item["article_title"],
+                        )
+                    except Exception:
+                        st.markdown(f"🖼️ **Image URL:** [{item['image_url']}]({item['image_url']})")
+                    st.markdown(f"**📝 Text Immediately Following Image:** {item['associated_text']}")
+                    st.markdown(f"**🔗 Source Article:** [{item['article_url']}]({item['article_url']})")
+                    st.caption(
+                        f"📅 Published Date: {item['published_date']} | BM25F Score: {item['score']}"
+                    )
 
 
 if __name__ == "__main__":

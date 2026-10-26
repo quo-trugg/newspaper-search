@@ -15,6 +15,12 @@ import xml.etree.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
 
+from image_search import (
+    extract_image_subdocuments,
+    get_or_create_image_index,
+    index_image_subdocuments,
+    save_image_subdocuments,
+)
 from indexer import (
     _normalize_record,
     get_indexed_urls,
@@ -372,6 +378,7 @@ def get_crawler_status(data_dir: str | Path = "data") -> dict[str, Any]:
 def crawl_and_index_revisit(
     index_dir: str | Path = "indexdir",
     data_dir: str | Path = "data",
+    image_index_dir: str | Path = "image_indexdir",
     max_per_site: int = DEFAULT_MAX_NEW_POSTS_PER_SITE,
     seen_urls: set[str] | None = None,
 ) -> dict[str, Any]:
@@ -380,7 +387,7 @@ def crawl_and_index_revisit(
     2. Crawl up to max_per_site new posts from VnExpress
     3. Crawl up to max_per_site new posts from BaoMoi
     4. Save new content to data/
-    5. Index new content into Whoosh
+    5. Index new content into Whoosh article index & image index
     """
     logger.info("--- Starting Revisit Cycle ---")
     start_time = time.time()
@@ -404,6 +411,7 @@ def crawl_and_index_revisit(
 
     new_articles = vne_articles + bm_articles
     indexed_count = 0
+    new_images_count = 0
 
     if new_articles:
         logger.info(f"Saving {len(new_articles)} new articles to '{data_dir}'...")
@@ -412,6 +420,41 @@ def crawl_and_index_revisit(
         logger.info(f"Indexing {len(new_articles)} new articles into Whoosh '{index_dir}'...")
         indexed_count = index_records(ix, new_articles)
         ix = ix.refresh()
+
+        # Extract and index image subdocuments from new articles
+        try:
+            session = requests.Session()
+            session.headers.update(HTTP_HEADERS)
+            extracted_subdocs: list[dict[str, str]] = []
+            for art in new_articles[:20]:
+                u = art.get("url")
+                if not u:
+                    continue
+                try:
+                    r = session.get(u, timeout=5)
+                    if r.status_code == 200:
+                        sub = extract_image_subdocuments(
+                            html=r.text,
+                            page_url=u,
+                            article_title=art.get("title", ""),
+                            published_date=art.get("published_date", ""),
+                        )
+                        extracted_subdocs.extend(sub)
+                except Exception:
+                    pass
+
+            if extracted_subdocs:
+                img_data_path = Path(data_dir) / "images_dataset.json"
+                save_image_subdocuments(extracted_subdocs, data_path=img_data_path)
+                ix_img = get_or_create_image_index(
+                    index_dir=image_index_dir,
+                    data_file=img_data_path,
+                )
+                new_images_count = index_image_subdocuments(ix_img, extracted_subdocs)
+                ix_img.refresh()
+                logger.info(f"Indexed {new_images_count} new image subdocuments into '{image_index_dir}'.")
+        except Exception as e:
+            logger.warning(f"Error during image subdocument extraction: {e}")
     else:
         logger.info("No new articles discovered during this revisit.")
 
@@ -424,6 +467,7 @@ def crawl_and_index_revisit(
         "baomoi_new": len(bm_articles),
         "total_new": len(new_articles),
         "indexed_count": indexed_count,
+        "indexed_images": new_images_count,
         "total_docs": total_docs,
         "elapsed_seconds": round(elapsed, 2),
         "status": "Success",
@@ -431,7 +475,7 @@ def crawl_and_index_revisit(
     save_crawler_status(summary, data_dir=data_dir)
     logger.info(
         f"--- Revisit Finished in {elapsed:.2f}s | "
-        f"+{len(vne_articles)} VnExpress, +{len(bm_articles)} BaoMoi | "
+        f"+{len(vne_articles)} VnExpress, +{len(bm_articles)} BaoMoi, +{new_images_count} Images | "
         f"Total indexed docs: {total_docs} ---"
     )
     return summary
@@ -442,6 +486,7 @@ def run_crawler_loop(
     max_per_site: int = DEFAULT_MAX_NEW_POSTS_PER_SITE,
     data_dir: str | Path = "data",
     index_dir: str | Path = "indexdir",
+    image_index_dir: str | Path = "image_indexdir",
     stop_event: threading.Event | None = None,
     run_once: bool = False,
 ) -> None:
@@ -462,6 +507,7 @@ def run_crawler_loop(
             crawl_and_index_revisit(
                 index_dir=index_dir,
                 data_dir=data_dir,
+                image_index_dir=image_index_dir,
                 max_per_site=max_per_site,
                 seen_urls=seen_urls,
             )
@@ -516,7 +562,13 @@ def main() -> None:
         "--index-dir",
         type=str,
         default="indexdir",
-        help="Path to Whoosh index directory (default: 'indexdir')",
+        help="Path to Whoosh article index directory (default: 'indexdir')",
+    )
+    parser.add_argument(
+        "--image-index-dir",
+        type=str,
+        default="image_indexdir",
+        help="Path to Whoosh image index directory (default: 'image_indexdir')",
     )
 
     args = parser.parse_args()
@@ -525,6 +577,7 @@ def main() -> None:
         max_per_site=args.max_posts,
         data_dir=args.data_dir,
         index_dir=args.index_dir,
+        image_index_dir=args.image_index_dir,
         run_once=args.once,
     )
 
