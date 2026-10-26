@@ -5,14 +5,18 @@ A fast, text-based news search engine over **VnExpress** and **BaoMoi** datasets
 ## Features
 
 - **Single-Time Idempotent Indexing**:
-  - Checks if `indexdir/` already contains a valid Whoosh index before reading any files.
+  - Checks if `indexdir/` and `image_indexdir/` already contain valid Whoosh indexes before reading files.
   - In `app.py`, index loading is cached with `@st.cache_resource`, ensuring that Streamlit never re-indexes on widget interactions or page reruns.
+- **Text-based Image Search**:
+  - Splits web pages into multiple **subdocuments**, each consisting of an **image URL** paired with the **text content immediately following the image** (captions, adjacent paragraphs, or descriptions).
+  - Matches keyword queries against the image's following text using BM25F ranking with field boosting on `associated_text`.
+  - Displays rendered images, associated text, original article headline, and canonical links.
 - **Automated Crawling Loop (15-Minute Revisit)**:
   - Continuously checks `https://vnexpress.net` (via breaking news RSS feeds) and `https://baomoi.com` (via latest article listings) every **15 minutes**.
   - **Deduplication**: Strictly skips any article already present in `data/` or `indexdir/`.
   - **Limit**: Crawls at most **50 new posts per website** per revisit cycle.
-  - **Real-Time Indexing**: Immediately indexes newly discovered articles into Whoosh so they appear in search results without server restarts.
-  - **Persistent Storage**: Saves newly crawled articles as UTF-8 JSON files in `data/`.
+  - **Real-Time Indexing**: Immediately indexes newly discovered articles and images into Whoosh.
+  - **Persistent Storage**: Saves newly crawled articles and image subdocuments as UTF-8 JSON files in `data/`.
 - **UTF-8 Support for Vietnamese Text**:
   - Ingests CSV files using `utf-8-sig` (handling Windows BOM) and JSON files using `utf-8`.
 - **Field Normalization & Deduplication**:
@@ -20,8 +24,8 @@ A fast, text-based news search engine over **VnExpress** and **BaoMoi** datasets
   - Truncates opening snippet to at most 20 words.
   - Discards blank or fragment entries (`#box_comment_vne`) and deduplicates documents by `url`.
 - **Relevance Ranking & Display**:
-  - `BM25F` scoring across `title` (with a 2.0 boost) and `first_20_words`.
-  - Every search result displays all 4 required fields: `title`, `url` (clickable link), `first_20_words`, and `published_date`.
+  - `BM25F` scoring across fields with boosts for title and text.
+  - Seamless toggle between **Articles** search mode and **Images** search mode.
 
 ## Repository Structure
 
@@ -31,19 +35,23 @@ A fast, text-based news search engine over **VnExpress** and **BaoMoi** datasets
 ├── README.md                 # Project setup and usage instructions
 ├── requirements.txt          # Python dependencies
 ├── pytest.ini                # Pytest configuration
-├── indexer.py                # Schema definition, data loading, indexing, and search logic
+├── indexer.py                # Schema definition, article data loading, and search logic
+├── image_search.py           # Text-based image subdocument extraction, indexing, and search
 ├── crawler.py                # 15-minute crawling loop for VnExpress & BaoMoi
-├── app.py                    # Streamlit web search interface with crawler controls
+├── app.py                    # Streamlit web search interface (Articles & Images modes)
 ├── data/                     # Source and newly crawled JSON/CSV datasets
 │   ├── baomoi_2026-10-20_2026-10-22.csv
 │   ├── baomoi_2026-10-20_2026-10-22.json
 │   ├── vnexpress_last_week.csv
 │   ├── vnexpress_last_week.json
-│   └── crawled_articles.json
-├── indexdir/                 # Persistent Whoosh index directory
+│   ├── crawled_articles.json
+│   └── images_dataset.json
+├── indexdir/                 # Persistent Whoosh article index directory
+├── image_indexdir/           # Persistent Whoosh image subdocument index directory
 └── tests/
-    ├── test_search.py        # Automated unit and idempotency verification tests
-    └── test_crawler.py       # Crawler deduplication, limit, and loop tests
+    ├── test_search.py        # Automated article search & idempotency tests
+    ├── test_crawler.py       # Crawler deduplication, limit, and loop tests
+    └── test_image_search.py  # Image subdocument extraction and ranking tests
 ```
 
 ## Installation & Setup
@@ -57,6 +65,18 @@ A fast, text-based news search engine over **VnExpress** and **BaoMoi** datasets
    ```bash
    pip install -r requirements.txt
    ```
+
+## Running the Web Application
+
+Start the Streamlit application:
+
+```bash
+streamlit run app.py
+```
+
+Open `http://localhost:8501` in your browser:
+- Switch between **Articles** and **Images** search modes using the segmented control.
+- In **Images** mode, enter keywords (e.g., `cầu vượt`, `giao thông`, `căn hộ`, `thể thao`) to search for images matching the text immediately following them.
 
 ## Running the Crawling Loop
 
@@ -73,7 +93,7 @@ python crawler.py
 Options:
 - `--interval <seconds>`: Revisit interval (default: `900` seconds / 15 minutes).
 - `--max-posts <number>`: Maximum new posts per site per revisit (default: `50`).
-- `--once`: Run a single revisit cycle immediately, index new posts, and exit.
+- `--once`: Run a single revisit cycle immediately, index new posts/images, and exit.
 
 Example (Single run):
 ```bash
@@ -85,17 +105,7 @@ python crawler.py --once
 The Streamlit sidebar includes:
 - **⚡ Crawl New Posts Now**: Trigger an on-demand revisit immediately.
 - **Auto-Revisit toggle**: Start/stop the 15-minute background crawling loop directly inside the web app.
-- **Real-time Status**: Displays total indexed articles and statistics of the latest revisit.
-
-## Running the Web Application
-
-Start the Streamlit application:
-
-```bash
-streamlit run app.py
-```
-
-Open `http://localhost:8501` in your browser. Enter keywords (e.g., `AI`, `công nghệ`, `kinh tế`, `thể thao`) to view ranked search results.
+- **Real-time Status**: Displays total indexed articles, indexed images, and statistics of the latest revisit.
 
 ## Running Tests
 

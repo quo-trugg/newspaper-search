@@ -1,5 +1,6 @@
-# Whoosh index directory
+# Whoosh index directories
 indexdir/
+image_indexdir/
 
 # Python cache & virtual environment
 __pycache__/
@@ -19,4 +20,3 @@ htmlcov/
 
 # Crawler runtime status
 data/.crawler_status.json
-
