@@ -194,10 +194,10 @@ def main() -> None:
             for rank, item in enumerate(results, start=1):
                 with st.container(border=True):
                     st.markdown(f"### {rank}. [{item['title']}]({item['url']})")
-                    st.markdown(f"**🔗 Link:** [{item['url']}]({item['url']})")
-                    st.markdown(f"**📝 First 20 words:** {item['first_20_words']}")
+                    st.markdown(f"[{item['url']}]({item['url']})")
+                    st.markdown(item["first_20_words"])
                     st.caption(
-                        f"📅 Published Date: {item['published_date']} | BM25F Score: {item['score']}"
+                        f"{item['published_date']} | BM25F Score: {item['score']}"
                     )
 
     else:
@@ -228,11 +228,11 @@ def main() -> None:
                             caption=item["article_title"],
                         )
                     except Exception:
-                        st.markdown(f"🖼️ **Image URL:** [{item['image_url']}]({item['image_url']})")
-                    st.markdown(f"**📝 Text Immediately Following Image:** {item['associated_text']}")
-                    st.markdown(f"**🔗 Source Article:** [{item['article_url']}]({item['article_url']})")
+                        st.markdown(f"[{item['image_url']}]({item['image_url']})")
+                    st.markdown(item["associated_text"])
+                    st.markdown(f"[{item['article_url']}]({item['article_url']})")
                     st.caption(
-                        f"📅 Published Date: {item['published_date']} | BM25F Score: {item['score']}"
+                        f"{item['published_date']} | BM25F Score: {item['score']}"
                     )
 
 
