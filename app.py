@@ -149,24 +149,15 @@ def main() -> None:
 
     render_sidebar(ix)
 
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        query = st.text_input(
-            "Search query:",
-            placeholder="Nhập từ khóa (ví dụ: AI, công nghệ, kinh tế, thể thao)...",
-            label_visibility="collapsed",
-        )
-    with col2:
-        top_k = st.selectbox(
-            "Limit",
-            options=[10, 20, 50, 100],
-            index=1,
-            label_visibility="collapsed",
-        )
+    query = st.text_input(
+        "Search query:",
+        placeholder="Enter keywords (e.g., AI, technology, economy, sports)...",
+        label_visibility="collapsed",
+    )
 
     if query.strip():
         start_time = time.perf_counter()
-        results = search_documents(ix, query, limit=top_k)
+        results = search_documents(ix, query, limit=20)
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
         st.markdown(
@@ -181,10 +172,6 @@ def main() -> None:
                 st.caption(
                     f"📅 Published Date: {item['published_date']} | BM25F Score: {item['score']}"
                 )
-    else:
-        st.info(
-            "💡 Enter one or more keywords above to search news articles from VnExpress and BaoMoi."
-        )
 
 
 if __name__ == "__main__":
